@@ -84,12 +84,21 @@ fi
 print_step "Installing to: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
-# Copy core files (only if installing from a different location)
+# Copy core files if installing from a different location
 if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
     cp "$SCRIPT_DIR/monitor.py" "$INSTALL_DIR/monitor.py"
     cp "$SCRIPT_DIR/claude-usage.30m.py" "$INSTALL_DIR/claude-usage.30m.py"
     cp "$SCRIPT_DIR/.env.example" "$INSTALL_DIR/.env.example"
 fi
+
+# Verify required files exist
+for f in monitor.py claude-usage.30m.py .env.example; do
+    if [ ! -f "$INSTALL_DIR/$f" ]; then
+        print_err "Missing file: $INSTALL_DIR/$f"
+        print_err "Make sure you cloned the full repo."
+        exit 1
+    fi
+done
 
 # Patch the shebang in the plugin to use the detected Python path
 sed -i '' "1s|.*|#!${PYTHON}|" "$INSTALL_DIR/claude-usage.30m.py"
@@ -132,22 +141,26 @@ fi
 
 print_step "Configuring SwiftBar plugin..."
 
-# Check if SwiftBar has a configured plugin directory
+# SwiftBar plugin dir must be SEPARATE from install dir,
+# otherwise SwiftBar tries to run install.sh and monitor.py as plugins.
 SWIFTBAR_DIR=$(defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || echo "")
 
-if [ -z "$SWIFTBAR_DIR" ]; then
-    # SwiftBar not yet configured — use a default
+# If SwiftBar's plugin dir is the install dir itself, or not set, use a dedicated folder
+if [ -z "$SWIFTBAR_DIR" ] || [ "$SWIFTBAR_DIR" = "$INSTALL_DIR" ]; then
     SWIFTBAR_DIR="$HOME/SwiftBarPlugins"
-    mkdir -p "$SWIFTBAR_DIR"
-    echo "  SwiftBar plugin directory: $SWIFTBAR_DIR"
-    echo "  (When SwiftBar launches, point it to this folder)"
-else
-    echo "  SwiftBar plugin directory: $SWIFTBAR_DIR"
+    # Update SwiftBar's preference to point to the correct directory
+    defaults write com.ameba.SwiftBar PluginDirectory -string "$SWIFTBAR_DIR"
+    echo "  Set SwiftBar plugin directory to: $SWIFTBAR_DIR"
 fi
 
 mkdir -p "$SWIFTBAR_DIR"
 ln -sf "$INSTALL_DIR/claude-usage.30m.py" "$SWIFTBAR_DIR/claude-usage.30m.py"
-echo "  Plugin symlinked."
+
+# Remove install.sh symlink/copy from plugin dir if it ended up there
+rm -f "$SWIFTBAR_DIR/install.sh" 2>/dev/null
+rm -f "$SWIFTBAR_DIR/monitor.py" 2>/dev/null
+
+echo "  Plugin symlinked to: $SWIFTBAR_DIR"
 
 # --- Set up cron job for email alerts ---
 
@@ -165,6 +178,9 @@ fi
 # --- Launch SwiftBar ---
 
 print_step "Launching SwiftBar..."
+# Quit first if running so it picks up the new plugin directory
+osascript -e 'tell application "SwiftBar" to quit' 2>/dev/null || true
+sleep 1
 open -a SwiftBar
 
 # --- Done ---
