@@ -2,124 +2,212 @@
 
 A macOS menu bar app that tracks your Claude weekly usage and alerts you before you run out.
 
-![Menu Bar](https://img.shields.io/badge/menu_bar-Now%3A13%25%20Fri%3A42%25-brightgreen)
+Shows **Now: 13% Fri: 42%** right in your menu bar — current usage and where you'll be by Friday's reset.
 
-## What it does
+---
 
-- Shows **current usage** and **projected usage at Friday's reset** in your Mac's menu bar
-- Click for a **trend chart** with projection line, burn rate, and detailed stats
-- **Color-coded**: green when safe, yellow at 90%, red at 95%
-- Optional **email alerts** via Gmail when projected usage crosses thresholds
-- Updates every 30 minutes automatically
+## Before You Start
 
-## Requirements
+You need two things on your Mac before installing:
 
-- **macOS** (Apple Silicon or Intel)
-- **Claude Code** — must be logged in at least once (the monitor reads your OAuth token from Keychain)
-- **Homebrew** — the installer handles everything else
+### 1. Homebrew (the Mac package manager)
 
-## Quick Install
+Open **Terminal** (search for "Terminal" in Spotlight) and paste this:
 
 ```bash
-git clone <this-repo> ~/Claude\ Token\ Monitor
-cd ~/Claude\ Token\ Monitor
-./install.sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-That's it. The installer will:
+If it says "already installed", you're good. Move on.
 
-1. Install Python 3, matplotlib, and SwiftBar if needed
-2. Ask if you want email alerts (optional)
-3. Set up the menu bar plugin
-4. Launch SwiftBar
+### 2. Claude Code (must be logged in)
 
-## Manual Install
+You need to have logged into Claude Code at least once on this Mac. The monitor reads your login token from the Mac's Keychain.
 
-If you prefer to do it yourself:
+If you haven't used Claude Code before, install and log in:
 
 ```bash
-# Install dependencies
-brew install python3
-brew install --cask swiftbar
-pip3 install matplotlib
-
-# Copy files to wherever you like
-mkdir -p ~/Claude\ Token\ Monitor
-cp monitor.py claude-usage.30m.py .env.example ~/Claude\ Token\ Monitor/
-cd ~/Claude\ Token\ Monitor
-cp .env.example .env   # edit with your settings
-
-# Make plugin executable and link into SwiftBar
-chmod +x claude-usage.30m.py
-ln -sf "$PWD/claude-usage.30m.py" ~/SwiftBarPlugins/claude-usage.30m.py
-
-# Launch SwiftBar and point it to ~/SwiftBarPlugins when prompted
-open -a SwiftBar
+brew install claude-code
+claude
 ```
 
-## Configuration
+Complete the login flow when prompted. Once you see the Claude Code prompt, you can quit — the monitor just needs the saved login token.
 
-Edit `~/Claude Token Monitor/.env`:
+---
+
+## Installation (3 steps)
+
+Open **Terminal** and run these commands one at a time:
+
+### Step 1: Download
+
+```bash
+git clone https://github.com/ryoungergithub/ClaudeTokenMonitor.git ~/ClaudeTokenMonitor
+```
+
+### Step 2: Run the installer
+
+```bash
+cd ~/ClaudeTokenMonitor && ./install.sh
+```
+
+The installer will:
+- Install Python 3, matplotlib, and SwiftBar automatically if needed
+- Ask if you want email alerts (optional — you can skip this)
+- Set up the menu bar plugin
+- Launch SwiftBar
+
+### Step 3: Point SwiftBar to the plugin folder
+
+When SwiftBar opens for the first time, it will ask you to **choose a plugin folder**.
+
+**Select this folder:**
+
+```
+~/SwiftBarPlugins
+```
+
+To navigate there: in the folder picker, press **Cmd+Shift+G**, paste `~/SwiftBarPlugins`, and click **Go**, then click **Open**.
+
+That's it! You should see **Now:XX% Fri:YY%** appear in your menu bar within a few seconds.
+
+---
+
+## What You'll See
+
+### Menu Bar
+
+You'll see something like **Now:13% Fri:42%** in your Mac's top menu bar:
+
+- **Now** = your current 7-day usage percentage
+- **Fri** = projected usage at Friday's weekly reset
+
+### Colors
+
+| Color | Meaning |
+|-------|---------|
+| White-green | All good — projected under 90% |
+| Yellow | Warning — projected 90-95% |
+| Red | Alarm — projected over 95% |
+
+### Click to Expand
+
+Click the menu bar item to see:
+- A trend chart showing your usage over time with a projection line
+- Burn rate (how fast you're using your allowance)
+- Time remaining until reset
+- 5-hour burst usage and Sonnet-specific usage
+
+---
+
+## Email Alerts (Optional)
+
+If you skipped email setup during install, you can add it later.
+
+### Get a Gmail App Password
+
+1. Go to https://myaccount.google.com/apppasswords
+2. Sign in to your Google account
+3. Create a new app password (name it anything, like "Claude Monitor")
+4. Copy the 16-character password it gives you
+
+### Edit the config file
+
+Open Terminal and run:
+
+```bash
+open ~/Claude\ Token\ Monitor/.env
+```
+
+Fill in your Gmail details:
 
 ```ini
-# Email alerts (optional — leave defaults to skip)
 SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-gmail-app-password
+SMTP_PASSWORD=the-16-char-app-password
 ALERT_RECIPIENT=your-email@gmail.com
-
-# When to alert (projected usage at reset)
-WARNING_THRESHOLD=90    # yellow + email
-ALARM_THRESHOLD=95      # red + email
-
-# Hours between repeat emails of the same level
-ALERT_COOLDOWN_HOURS=4
 ```
 
-For Gmail, you need an **App Password** (not your regular password):
-https://myaccount.google.com/apppasswords
+### Test it
 
-## Menu Bar Colors
+```bash
+python3 ~/Claude\ Token\ Monitor/monitor.py --test-email --verbose
+```
 
-| Projected Usage | Color | Meaning |
-|----------------|-------|---------|
-| < 90% | White-green | On track |
-| 90 – 95% | Yellow | Warning — may run out |
-| > 95% | Red | Alarm — likely to hit limit |
+You should receive a test email within a few seconds.
 
-## How It Works
-
-1. Every 30 minutes, the plugin calls Anthropic's usage API using your Claude Code OAuth token
-2. It gets your actual 7-day utilization percentage (not estimated — the real number)
-3. It calculates: if you keep using at this rate, what % will you be at by Friday's reset?
-4. The menu bar shows both numbers; the dropdown shows a chart with the trend
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `monitor.py` | Core logic: API calls, projection math, email alerts |
-| `claude-usage.30m.py` | SwiftBar plugin: menu bar display + chart |
-| `.env` | Your configuration (credentials, thresholds) |
-| `.env.example` | Template for new installs |
-| `install.sh` | One-command installer |
-| `usage_history.json` | Auto-generated: readings for the trend chart |
-| `alert_state.json` | Auto-generated: email alert state |
-| `monitor.log` | Auto-generated: log of email alert checks |
+---
 
 ## Troubleshooting
 
-**Menu bar shows "C:--" with a warning icon**
-- Make sure you're logged into Claude Code (`claude` in terminal)
-- Try: `security find-generic-password -s "Claude Code-credentials" -w`
+### Menu bar shows "C:--" with a warning icon
 
-**Chart says "Collecting data..."**
-- Normal on first run. The chart fills in as readings accumulate every 30 minutes.
+This means the monitor can't reach the Anthropic API. Most likely:
 
-**Email alerts not sending**
-- Check your Gmail App Password is correct
-- Test: `python3 ~/Claude\ Token\ Monitor/monitor.py --test-email --verbose`
+- You haven't logged into Claude Code on this Mac yet
+- Fix: run `claude` in Terminal and complete the login
 
-**Plugin not appearing in menu bar**
-- Make sure SwiftBar is running (check Applications)
-- Verify the symlink: `ls -la ~/SwiftBarPlugins/` (or wherever SwiftBar's plugin dir is)
-- Check: `defaults read com.ameba.SwiftBar PluginDirectory`
+To verify your login token exists:
+```bash
+security find-generic-password -s "Claude Code-credentials" -w
+```
+If this prints a long JSON string, you're logged in. If it says "not found", you need to log into Claude Code first.
+
+### Chart says "Collecting data..."
+
+This is normal on first install. The chart fills in as readings accumulate every 30 minutes. Give it a few hours.
+
+### Nothing appears in the menu bar
+
+1. Make sure SwiftBar is running — look for the SwiftBar icon in your menu bar, or open it from Applications
+2. Check that SwiftBar is pointed at the right plugin folder:
+   ```bash
+   defaults read com.ameba.SwiftBar PluginDirectory
+   ```
+   This should show a path containing `SwiftBarPlugins`
+3. Check that the plugin symlink exists:
+   ```bash
+   ls -la ~/SwiftBarPlugins/
+   ```
+   You should see `claude-usage.30m.py` listed
+
+### SwiftBar shows the wrong thing (install script output, etc.)
+
+SwiftBar's plugin folder is pointing at the wrong directory. Fix it:
+
+```bash
+osascript -e 'tell application "SwiftBar" to quit'
+defaults write com.ameba.SwiftBar PluginDirectory -string "$HOME/SwiftBarPlugins"
+mkdir -p ~/SwiftBarPlugins
+ln -sf ~/Claude\ Token\ Monitor/claude-usage.30m.py ~/SwiftBarPlugins/claude-usage.30m.py
+open -a SwiftBar
+```
+
+### Email alerts not sending
+
+- Make sure the App Password is correct (16 characters, no spaces)
+- Test with: `python3 ~/Claude\ Token\ Monitor/monitor.py --test-email --verbose`
+- Check the log: `cat ~/Claude\ Token\ Monitor/monitor.log | tail -20`
+
+---
+
+## Updating
+
+To get the latest version:
+
+```bash
+cd ~/ClaudeTokenMonitor
+git pull
+./install.sh
+```
+
+Your `.env` configuration will be preserved — the installer won't overwrite it.
+
+---
+
+## How It Works
+
+1. Every 30 minutes, the plugin calls Anthropic's usage API using your Claude Code OAuth token (stored in your Mac's Keychain)
+2. It gets your actual 7-day utilization percentage — the real number Anthropic uses for rate limiting
+3. It calculates: at your current burn rate, what % will you be at by Friday's reset?
+4. The menu bar shows both numbers; the dropdown shows a chart with the full trend
+5. If email alerts are configured, you get a warning at 90% projected and an alarm at 95%

@@ -14,8 +14,9 @@ print_step() { echo -e "\n${BOLD}${GREEN}==>${NC} ${BOLD}$1${NC}"; }
 print_warn() { echo -e "${YELLOW}Warning:${NC} $1"; }
 print_err()  { echo -e "${RED}Error:${NC} $1"; }
 
-INSTALL_DIR="$HOME/Claude Token Monitor"
+# Install to wherever the script lives (the git clone directory)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INSTALL_DIR="$SCRIPT_DIR"
 
 print_step "Claude Token Monitor — Installer"
 echo "This will set up the menu bar usage monitor and optional email alerts."
