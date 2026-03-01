@@ -1,0 +1,9 @@
+# Credentials — never commit
+.env
+
+# Auto-generated runtime files
+alert_state.json
+usage_history.json
+monitor.log
+cron.log
+__pycache__/
