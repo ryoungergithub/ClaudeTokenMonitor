@@ -32,16 +32,25 @@ if ! command -v brew &>/dev/null; then
 fi
 echo "  Homebrew: OK"
 
-# Python 3
+# Python 3 — find the right path for this machine
 PYTHON=""
 if command -v /opt/homebrew/bin/python3 &>/dev/null; then
     PYTHON="/opt/homebrew/bin/python3"
+elif command -v /usr/local/bin/python3 &>/dev/null; then
+    PYTHON="/usr/local/bin/python3"
 elif command -v python3 &>/dev/null; then
     PYTHON="$(command -v python3)"
 else
     print_step "Installing Python 3..."
     brew install python3
-    PYTHON="/opt/homebrew/bin/python3"
+    # Re-detect after install
+    if command -v /opt/homebrew/bin/python3 &>/dev/null; then
+        PYTHON="/opt/homebrew/bin/python3"
+    elif command -v /usr/local/bin/python3 &>/dev/null; then
+        PYTHON="/usr/local/bin/python3"
+    else
+        PYTHON="$(command -v python3)"
+    fi
 fi
 echo "  Python 3: OK ($PYTHON)"
 
@@ -79,9 +88,14 @@ mkdir -p "$INSTALL_DIR"
 if [ "$SCRIPT_DIR" != "$INSTALL_DIR" ]; then
     cp "$SCRIPT_DIR/monitor.py" "$INSTALL_DIR/monitor.py"
     cp "$SCRIPT_DIR/claude-usage.30m.py" "$INSTALL_DIR/claude-usage.30m.py"
+    cp "$SCRIPT_DIR/.env.example" "$INSTALL_DIR/.env.example"
 fi
 
+# Patch the shebang in the plugin to use the detected Python path
+sed -i '' "1s|.*|#!${PYTHON}|" "$INSTALL_DIR/claude-usage.30m.py"
 chmod +x "$INSTALL_DIR/claude-usage.30m.py"
+
+echo "  Files installed (using $PYTHON)"
 
 # --- Configure .env ---
 
@@ -89,7 +103,7 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     print_step "Setting up configuration..."
 
     # Copy template
-    cp "$SCRIPT_DIR/.env.example" "$INSTALL_DIR/.env"
+    cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
 
     echo ""
     echo "  Do you want to set up email alerts? (optional)"
@@ -103,11 +117,9 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
         alert_to="${alert_to:-$gmail_user}"
 
         # Update .env
-        if [[ "$(uname)" == "Darwin" ]]; then
-            sed -i '' "s|SMTP_USER=.*|SMTP_USER=$gmail_user|" "$INSTALL_DIR/.env"
-            sed -i '' "s|SMTP_PASSWORD=.*|SMTP_PASSWORD=$gmail_pass|" "$INSTALL_DIR/.env"
-            sed -i '' "s|ALERT_RECIPIENT=.*|ALERT_RECIPIENT=$alert_to|" "$INSTALL_DIR/.env"
-        fi
+        sed -i '' "s|SMTP_USER=.*|SMTP_USER=$gmail_user|" "$INSTALL_DIR/.env"
+        sed -i '' "s|SMTP_PASSWORD=.*|SMTP_PASSWORD=$gmail_pass|" "$INSTALL_DIR/.env"
+        sed -i '' "s|ALERT_RECIPIENT=.*|ALERT_RECIPIENT=$alert_to|" "$INSTALL_DIR/.env"
         echo "  Email alerts configured."
     else
         echo "  Skipped. You can edit $INSTALL_DIR/.env later to add email alerts."
