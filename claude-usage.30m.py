@@ -284,6 +284,12 @@ def main():
 
     five_hour_raw = usage.get("five_hour", {})
     five_hour_pct = five_hour_raw.get("utilization")
+    five_hour_resets = None
+    if five_hour_raw.get("resets_at"):
+        try:
+            five_hour_resets = parse_reset_time(five_hour_raw["resets_at"])
+        except (KeyError, ValueError):
+            pass
 
     sonnet_raw = usage.get("seven_day_sonnet") or {}
     sonnet_pct = sonnet_raw.get("utilization")
@@ -302,10 +308,23 @@ def main():
     except Exception:
         chart_b64 = None
 
-    # --- Menu bar line --- show current and projected usage
+    # --- Menu bar line --- show 5hr reset countdown, 5hr usage, weekly, and predicted
     projected_pct = projection["projected_pct"]
+    five_hr_display = f"{five_hour_pct:.0f}" if five_hour_pct is not None else "--"
     color = severity_color(projected_pct)
-    print(f"Now:{seven_day_pct:.0f}%  Fri:{projected_pct:.0f}% | sfimage=cpu sfcolor={color} color={color} size=12")
+
+    # Calculate time until 5-hour window resets
+    five_resets_str = "--"
+    if five_hour_resets:
+        five_remaining = (five_hour_resets - now).total_seconds() / 3600
+        if five_remaining > 0:
+            h = int(five_remaining)
+            m = int((five_remaining - h) * 60)
+            five_resets_str = f"{h}h{m:02d}m"
+        else:
+            five_resets_str = "now"
+
+    print(f"Resets In:{five_resets_str}  Usage:{five_hr_display}%  Weekly:{seven_day_pct:.0f}%  Predicted:{projected_pct:.0f}% | sfimage=cpu sfcolor={color} color={color} size=12")
 
     # --- Dropdown ---
     print("---")
