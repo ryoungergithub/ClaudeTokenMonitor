@@ -2,7 +2,9 @@
 
 A macOS menu bar app that tracks your Claude weekly usage and alerts you before you run out.
 
-Shows **Now: 13% Fri: 42%** right in your menu bar — current usage and where you'll be by Friday's reset.
+Shows four key metrics right in your Mac's menu bar:
+
+**Resets In:3h22m  Usage:10%  Weekly:13%  Predicted:42%**
 
 ---
 
@@ -61,15 +63,17 @@ The installer will:
 
 When SwiftBar opens for the first time, it will ask you to **choose a plugin folder**.
 
-**Select this folder:**
+**You MUST select this folder (not the ClaudeTokenMonitor folder):**
 
 ```
 ~/SwiftBarPlugins
 ```
 
-To navigate there: in the folder picker, press **Cmd+Shift+G**, paste `~/SwiftBarPlugins`, and click **Go**, then click **Open**.
+To navigate there: in the folder picker, press **Cmd+Shift+G**, type `~/SwiftBarPlugins`, click **Go**, then click **Open**.
 
-That's it! You should see **Now:XX% Fri:YY%** appear in your menu bar within a few seconds.
+> **Important:** Do NOT point SwiftBar at `~/ClaudeTokenMonitor`. That folder contains the install script and other files that SwiftBar will try to run as plugins, which will cause errors. The installer already created `~/SwiftBarPlugins` and placed the correct plugin file there.
+
+After a few seconds, you should see the monitor appear in your menu bar.
 
 ---
 
@@ -77,26 +81,35 @@ That's it! You should see **Now:XX% Fri:YY%** appear in your menu bar within a f
 
 ### Menu Bar
 
-You'll see something like **Now:13% Fri:42%** in your Mac's top menu bar:
+Your Mac's top menu bar will show four values:
 
-- **Now** = your current 7-day usage percentage
-- **Fri** = projected usage at Friday's weekly reset
+**Resets In:3h22m  Usage:10%  Weekly:13%  Predicted:42%**
+
+| Field | What it means |
+|-------|--------------|
+| **Resets In** | Time until your 5-hour burst window resets |
+| **Usage** | Current 5-hour burst window usage % |
+| **Weekly** | Current 7-day usage % |
+| **Predicted** | Projected 7-day usage at Friday's weekly reset |
 
 ### Colors
 
+The text and icon color tells you your status at a glance:
+
 | Color | Meaning |
 |-------|---------|
-| White-green | All good — projected under 90% |
-| Yellow | Warning — projected 90-95% |
-| Red | Alarm — projected over 95% |
+| White-green | All good — predicted usage under 90% |
+| Yellow | Warning — predicted usage 90-95% |
+| Red | Alarm — predicted usage over 95% |
 
 ### Click to Expand
 
-Click the menu bar item to see:
-- A trend chart showing your usage over time with a projection line
-- Burn rate (how fast you're using your allowance)
-- Time remaining until reset
-- 5-hour burst usage and Sonnet-specific usage
+Click the menu bar item to see a detailed dropdown:
+- **Trend chart** — your usage over time with a projection line to Friday's reset
+- **Burn rate** — how fast you're consuming your allowance (% per hour)
+- **Detailed stats** — 7-day, 5-hour, and Sonnet-specific usage breakdowns
+- **Reset time** — exactly when your weekly window resets
+- **Extra usage credits** — if enabled on your account
 
 ---
 
@@ -116,7 +129,7 @@ If you skipped email setup during install, you can add it later.
 Open Terminal and run:
 
 ```bash
-open ~/Claude\ Token\ Monitor/.env
+open ~/ClaudeTokenMonitor/.env
 ```
 
 Fill in your Gmail details:
@@ -127,10 +140,12 @@ SMTP_PASSWORD=the-16-char-app-password
 ALERT_RECIPIENT=your-email@gmail.com
 ```
 
+Save and close the file. The email alerts run automatically via a cron job every 30 minutes.
+
 ### Test it
 
 ```bash
-python3 ~/Claude\ Token\ Monitor/monitor.py --test-email --verbose
+python3 ~/ClaudeTokenMonitor/monitor.py --test-email --verbose
 ```
 
 You should receive a test email within a few seconds.
@@ -141,10 +156,9 @@ You should receive a test email within a few seconds.
 
 ### Menu bar shows "C:--" with a warning icon
 
-This means the monitor can't reach the Anthropic API. Most likely:
+This means the monitor can't reach the Anthropic API. Most likely you haven't logged into Claude Code on this Mac yet.
 
-- You haven't logged into Claude Code on this Mac yet
-- Fix: run `claude` in Terminal and complete the login
+**Fix:** Run `claude` in Terminal and complete the login flow.
 
 To verify your login token exists:
 ```bash
@@ -163,30 +177,30 @@ This is normal on first install. The chart fills in as readings accumulate every
    ```bash
    defaults read com.ameba.SwiftBar PluginDirectory
    ```
-   This should show a path containing `SwiftBarPlugins`
+   This should show a path ending in `SwiftBarPlugins`
 3. Check that the plugin symlink exists:
    ```bash
    ls -la ~/SwiftBarPlugins/
    ```
    You should see `claude-usage.30m.py` listed
 
-### SwiftBar shows the wrong thing (install script output, etc.)
+### SwiftBar shows the wrong thing (install script output, raw text, etc.)
 
-SwiftBar's plugin folder is pointing at the wrong directory. Fix it:
+This happens when SwiftBar's plugin folder is pointing at the wrong directory (the clone folder instead of the plugins folder). Fix it:
 
 ```bash
 osascript -e 'tell application "SwiftBar" to quit'
 defaults write com.ameba.SwiftBar PluginDirectory -string "$HOME/SwiftBarPlugins"
 mkdir -p ~/SwiftBarPlugins
-ln -sf ~/Claude\ Token\ Monitor/claude-usage.30m.py ~/SwiftBarPlugins/claude-usage.30m.py
+ln -sf ~/ClaudeTokenMonitor/claude-usage.30m.py ~/SwiftBarPlugins/claude-usage.30m.py
 open -a SwiftBar
 ```
 
 ### Email alerts not sending
 
 - Make sure the App Password is correct (16 characters, no spaces)
-- Test with: `python3 ~/Claude\ Token\ Monitor/monitor.py --test-email --verbose`
-- Check the log: `cat ~/Claude\ Token\ Monitor/monitor.log | tail -20`
+- Test with: `python3 ~/ClaudeTokenMonitor/monitor.py --test-email --verbose`
+- Check the log: `tail -20 ~/ClaudeTokenMonitor/monitor.log`
 
 ---
 
@@ -196,6 +210,7 @@ To get the latest version:
 
 ```bash
 cd ~/ClaudeTokenMonitor
+git stash
 git pull
 ./install.sh
 ```
@@ -207,7 +222,8 @@ Your `.env` configuration will be preserved — the installer won't overwrite it
 ## How It Works
 
 1. Every 30 minutes, the plugin calls Anthropic's usage API using your Claude Code OAuth token (stored in your Mac's Keychain)
-2. It gets your actual 7-day utilization percentage — the real number Anthropic uses for rate limiting
+2. It gets your actual utilization percentages — the real numbers Anthropic uses for rate limiting
 3. It calculates: at your current burn rate, what % will you be at by Friday's reset?
-4. The menu bar shows both numbers; the dropdown shows a chart with the full trend
-5. If email alerts are configured, you get a warning at 90% projected and an alarm at 95%
+4. The menu bar shows: 5-hour reset countdown, 5-hour burst usage, weekly usage, and the predicted usage at reset
+5. The dropdown shows a trend chart with a projection line so you can see the trajectory
+6. If email alerts are configured, you get a warning email at 90% predicted and an alarm at 95%
