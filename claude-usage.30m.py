@@ -259,56 +259,12 @@ def print_error(msg: str):
     print("Refresh | refresh=true sfimage=arrow.clockwise")
 
 
-def main():
-    is_dark = os.environ.get("OS_APPEARANCE", "Dark") == "Dark"
-    now = datetime.datetime.now()
-
-    # Fetch usage data
-    try:
-        token = get_oauth_token()
-        usage = fetch_usage(token)
-    except Exception as e:
-        print_error(str(e))
-        return
-
-    # Parse 7-day data
-    seven_day_raw = usage.get("seven_day", {})
-    seven_day_pct = seven_day_raw.get("utilization") or 0
-    try:
-        resets_at = parse_reset_time(seven_day_raw["resets_at"])
-    except (KeyError, ValueError) as e:
-        print_error(f"Bad reset time: {e}")
-        return
-
-    projection = calculate_projection(seven_day_pct, resets_at, now)
-
-    five_hour_raw = usage.get("five_hour", {})
-    five_hour_pct = five_hour_raw.get("utilization")
-    five_hour_resets = None
-    if five_hour_raw.get("resets_at"):
-        try:
-            five_hour_resets = parse_reset_time(five_hour_raw["resets_at"])
-        except (KeyError, ValueError):
-            pass
-
-    sonnet_raw = usage.get("seven_day_sonnet") or {}
-    sonnet_pct = sonnet_raw.get("utilization")
-
-    extra = usage.get("extra_usage") or {}
-
-    # Update history
-    history = load_history()
-    append_reading(history, now, usage, projection)
-    prune_history(history, MAX_HISTORY_DAYS)
-    save_history(history)
-
-    # Generate chart
-    try:
-        chart_b64 = generate_chart(history["readings"], projection, resets_at, is_dark)
-    except Exception:
-        chart_b64 = None
-
-    # --- Menu bar line --- show 5hr reset countdown, 5hr usage, weekly, and predicted
+def _output_menu(
+    now, is_dark, seven_day_pct, five_hour_pct, sonnet_pct,
+    five_hour_resets, projection, extra, resets_at,
+    chart_b64, history, stale=False,
+):
+    """Print the full SwiftBar menu output."""
     projected_pct = projection["projected_pct"]
     five_hr_display = f"{five_hour_pct:.0f}" if five_hour_pct is not None else "--"
     color = severity_color(projected_pct)
@@ -324,7 +280,9 @@ def main():
         else:
             five_resets_str = "now"
 
-    print(f"Resets In:{five_resets_str}  Usage:{five_hr_display}%  Weekly:{seven_day_pct:.0f}%  Predicted:{projected_pct:.0f}% | sfimage=cpu sfcolor={color} color={color} size=12")
+    # Menu bar line — append ~ if showing cached data
+    stale_marker = "~" if stale else ""
+    print(f"Resets In:{five_resets_str}  Usage:{five_hr_display}%  Weekly:{seven_day_pct:.0f}%  Predicted:{projected_pct:.0f}%{stale_marker} | sfimage=cpu sfcolor={color} color={color} size=12")
 
     # --- Dropdown ---
     print("---")
@@ -332,6 +290,10 @@ def main():
     tc = "#FFFFFF" if is_dark else "#000000"
     print(f"Claude Token Usage | size=15 font=.AppleSystemUIFontBold color={tc}")
     print("---")
+
+    if stale:
+        print("API temporarily unavailable — showing cached data | color=#FF9800 size=11")
+        print("---")
 
     # Chart
     if chart_b64:
@@ -373,6 +335,100 @@ def main():
     print("Refresh Now | refresh=true sfimage=arrow.clockwise")
     now_str = now.strftime("%-I:%M %p")
     print(f"Updated {now_str} | size=10 color=gray")
+
+
+def main():
+    is_dark = os.environ.get("OS_APPEARANCE", "Dark") == "Dark"
+    now = datetime.datetime.now()
+
+    # Fetch usage data
+    api_error = None
+    try:
+        token = get_oauth_token()
+        usage = fetch_usage(token)
+    except Exception as e:
+        api_error = str(e)
+        usage = None
+
+    # If API failed, try to use last known good reading from history
+    if usage is None:
+        history = load_history()
+        if history["readings"]:
+            last = history["readings"][-1]
+            last_ts = datetime.datetime.fromisoformat(last["timestamp"])
+            age_minutes = (now - last_ts).total_seconds() / 60
+            # Use cached data if less than 2 hours old
+            if age_minutes < 120:
+                resets_at_str = last.get("resets_at", "")
+                if resets_at_str:
+                    try:
+                        resets_at = parse_reset_time(resets_at_str)
+                        seven_day_pct = last.get("seven_day_pct", 0)
+                        five_hour_pct = last.get("five_hour_pct")
+                        sonnet_pct = last.get("sonnet_pct")
+                        projection = calculate_projection(seven_day_pct, resets_at, now)
+                        five_hour_resets = None
+                        extra = {}
+                        # Skip history update — no new data
+                        # Jump straight to chart and output, with staleness indicator
+                        try:
+                            chart_b64 = generate_chart(history["readings"], projection, resets_at, is_dark)
+                        except Exception:
+                            chart_b64 = None
+                        _output_menu(
+                            now, is_dark, seven_day_pct, five_hour_pct, sonnet_pct,
+                            five_hour_resets, projection, extra, resets_at,
+                            chart_b64, history, stale=True,
+                        )
+                        return
+                    except (KeyError, ValueError):
+                        pass
+        # No usable cached data — show error
+        print_error(api_error)
+        return
+
+    # Parse 7-day data
+    seven_day_raw = usage.get("seven_day", {})
+    seven_day_pct = seven_day_raw.get("utilization") or 0
+    try:
+        resets_at = parse_reset_time(seven_day_raw["resets_at"])
+    except (KeyError, ValueError) as e:
+        print_error(f"Bad reset time: {e}")
+        return
+
+    projection = calculate_projection(seven_day_pct, resets_at, now)
+
+    five_hour_raw = usage.get("five_hour", {})
+    five_hour_pct = five_hour_raw.get("utilization")
+    five_hour_resets = None
+    if five_hour_raw.get("resets_at"):
+        try:
+            five_hour_resets = parse_reset_time(five_hour_raw["resets_at"])
+        except (KeyError, ValueError):
+            pass
+
+    sonnet_raw = usage.get("seven_day_sonnet") or {}
+    sonnet_pct = sonnet_raw.get("utilization")
+
+    extra = usage.get("extra_usage") or {}
+
+    # Update history
+    history = load_history()
+    append_reading(history, now, usage, projection)
+    prune_history(history, MAX_HISTORY_DAYS)
+    save_history(history)
+
+    # Generate chart
+    try:
+        chart_b64 = generate_chart(history["readings"], projection, resets_at, is_dark)
+    except Exception:
+        chart_b64 = None
+
+    _output_menu(
+        now, is_dark, seven_day_pct, five_hour_pct, sonnet_pct,
+        five_hour_resets, projection, extra, resets_at,
+        chart_b64, history, stale=False,
+    )
 
 
 if __name__ == "__main__":
