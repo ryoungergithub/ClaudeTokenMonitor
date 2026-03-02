@@ -15,6 +15,7 @@ import logging
 import os
 import pathlib
 import smtplib
+import ssl
 import subprocess
 import sys
 import urllib.request
@@ -119,6 +120,31 @@ def get_oauth_token() -> str:
 # Usage API
 # ---------------------------------------------------------------------------
 
+def _get_ssl_context() -> ssl.SSLContext:
+    """Build an SSL context that works even in SwiftBar's stripped environment."""
+    ctx = ssl.create_default_context()
+    # SwiftBar may not inherit the env vars that tell Python where certs live.
+    # Try common Homebrew cert paths if the default context has no certs loaded.
+    cert_candidates = [
+        "/opt/homebrew/etc/openssl@3/cert.pem",
+        "/opt/homebrew/etc/ca-certificates/cert.pem",
+        "/usr/local/etc/openssl@3/cert.pem",
+        "/etc/ssl/cert.pem",
+    ]
+    try:
+        # Quick test — if default context already works, use it
+        ctx.load_default_certs()
+    except Exception:
+        pass
+    # If no CA certs are loaded, try the candidates
+    if ctx.cert_store_stats()["x509_ca"] == 0:
+        for path in cert_candidates:
+            if os.path.exists(path):
+                ctx.load_verify_locations(path)
+                break
+    return ctx
+
+
 def fetch_usage(token: str) -> dict:
     """Call the Anthropic OAuth usage API and return the response."""
     req = urllib.request.Request(
@@ -128,8 +154,9 @@ def fetch_usage(token: str) -> dict:
             "anthropic-beta": "oauth-2025-04-20",
         },
     )
+    ssl_ctx = _get_ssl_context()
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=30, context=ssl_ctx) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""
