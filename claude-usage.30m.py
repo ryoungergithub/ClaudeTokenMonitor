@@ -372,7 +372,9 @@ def _output_menu(
     script_path = str(PROJECT_DIR / "claude-usage.30m.py")
     for name, hex_color in COLOR_OPTIONS:
         checked = "true" if hex_color == display_color else "false"
-        print(f"--{name} | bash=/usr/bin/env param1=python3 param2={script_path} param3=--set-color param4={hex_color} checked={checked} terminal=false refresh=true sfimage=circle.fill sfcolor={hex_color}")
+        # Strip '#' from color param to avoid SwiftBar parsing issues; re-added in handler
+        color_code = hex_color.lstrip("#")
+        print(f'--{name} | bash=/opt/homebrew/bin/python3 param1="{script_path}" param2=--set-color param3={color_code} checked={checked} terminal=false refresh=true sfimage=circle.fill sfcolor={hex_color}')
 
 
 def main():
@@ -476,8 +478,11 @@ def main():
 
 if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "--set-color":
+        color = sys.argv[2]
+        if not color.startswith("#"):
+            color = "#" + color
         prefs = load_prefs()
-        prefs["display_color"] = sys.argv[2]
+        prefs["display_color"] = color
         save_prefs(prefs)
         sys.exit(0)
     main()
