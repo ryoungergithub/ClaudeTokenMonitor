@@ -4,6 +4,7 @@
 # Auto-generated runtime files
 alert_state.json
 usage_history.json
+preferences.json
 monitor.log
 cron.log
 __pycache__/

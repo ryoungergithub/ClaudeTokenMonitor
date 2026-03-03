@@ -34,12 +34,41 @@ from monitor import (
 )
 
 HISTORY_FILE = PROJECT_DIR / "usage_history.json"
+PREFS_FILE = PROJECT_DIR / "preferences.json"
 MAX_HISTORY_DAYS = 14
+
+DEFAULT_DISPLAY_COLOR = "#E8FFF0"
+COLOR_OPTIONS = [
+    ("White", "#FFFFFF"),
+    ("Green Tint", "#E8FFF0"),
+    ("Light Blue", "#87CEEB"),
+    ("Cyan", "#00FFFF"),
+    ("Green", "#66FF66"),
+    ("Purple", "#DDA0DD"),
+    ("Orange", "#FFA500"),
+    ("Pink", "#FFB6C1"),
+    ("Black", "#000000"),
+]
 
 
 # ---------------------------------------------------------------------------
 # History management
 # ---------------------------------------------------------------------------
+
+def load_prefs() -> dict:
+    if PREFS_FILE.exists():
+        try:
+            with open(PREFS_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, KeyError):
+            pass
+    return {}
+
+
+def save_prefs(prefs: dict):
+    with open(PREFS_FILE, "w") as f:
+        json.dump(prefs, f, indent=2)
+
 
 def load_history() -> dict:
     if HISTORY_FILE.exists():
@@ -94,13 +123,14 @@ def prune_history(history: dict, max_days: int):
 # Color helpers
 # ---------------------------------------------------------------------------
 
-def severity_color(pct: float) -> str:
+def severity_color(pct: float, normal_color: str = DEFAULT_DISPLAY_COLOR) -> str:
     """Return a hex color based on usage severity.
 
     Thresholds match .env: WARNING=90%, ALARM=95%.
+    The normal_color is used when usage is below warning level.
     """
     if pct < 90:
-        return "#E8FFF0"  # almost white with green tint — all good
+        return normal_color
     elif pct < 95:
         return "#FFFF00"  # yellow — warning level
     return "#FF3333"      # red — alarm level
@@ -262,12 +292,12 @@ def print_error(msg: str):
 def _output_menu(
     now, is_dark, seven_day_pct, five_hour_pct, sonnet_pct,
     five_hour_resets, projection, extra, resets_at,
-    chart_b64, history, stale=False,
+    chart_b64, history, stale=False, display_color=DEFAULT_DISPLAY_COLOR,
 ):
     """Print the full SwiftBar menu output."""
     projected_pct = projection["projected_pct"]
     five_hr_display = f"{five_hour_pct:.0f}" if five_hour_pct is not None else "--"
-    color = severity_color(projected_pct)
+    color = severity_color(projected_pct, display_color)
 
     # Calculate time until 5-hour window resets
     five_resets_str = "--"
@@ -301,12 +331,12 @@ def _output_menu(
         print("---")
 
     # Stats
-    proj_color = severity_color(projection["projected_pct"])
+    proj_color = severity_color(projection["projected_pct"], display_color)
     mono = "font=Menlo size=12"
 
-    print(f"7-Day Usage     {seven_day_pct:>6.1f}%     | {mono} color={severity_color(seven_day_pct)}")
+    print(f"7-Day Usage     {seven_day_pct:>6.1f}%     | {mono} color={severity_color(seven_day_pct, display_color)}")
     if five_hour_pct is not None:
-        print(f"5-Hour Burst    {five_hour_pct:>6.1f}%     | {mono} color={severity_color(five_hour_pct)}")
+        print(f"5-Hour Burst    {five_hour_pct:>6.1f}%     | {mono} color={severity_color(five_hour_pct, display_color)}")
     if sonnet_pct is not None:
         print(f"Sonnet (7-Day)  {sonnet_pct:>6.1f}%     | {mono}")
     print("---")
@@ -336,10 +366,21 @@ def _output_menu(
     now_str = now.strftime("%-I:%M %p")
     print(f"Updated {now_str} | size=10 color=gray")
 
+    # Display Color settings submenu
+    print("---")
+    print("Display Color | sfimage=paintpalette")
+    script_path = str(PROJECT_DIR / "claude-usage.30m.py")
+    for name, hex_color in COLOR_OPTIONS:
+        checked = "true" if hex_color == display_color else "false"
+        print(f"--{name} | bash=/usr/bin/env param1=python3 param2={script_path} param3=--set-color param4={hex_color} checked={checked} terminal=false refresh=true sfimage=circle.fill sfcolor={hex_color}")
+
 
 def main():
     is_dark = os.environ.get("OS_APPEARANCE", "Dark") == "Dark"
     now = datetime.datetime.now()
+
+    prefs = load_prefs()
+    display_color = prefs.get("display_color", DEFAULT_DISPLAY_COLOR)
 
     # Fetch usage data
     api_error = None
@@ -379,6 +420,7 @@ def main():
                             now, is_dark, seven_day_pct, five_hour_pct, sonnet_pct,
                             five_hour_resets, projection, extra, resets_at,
                             chart_b64, history, stale=True,
+                            display_color=display_color,
                         )
                         return
                     except (KeyError, ValueError):
@@ -428,8 +470,14 @@ def main():
         now, is_dark, seven_day_pct, five_hour_pct, sonnet_pct,
         five_hour_resets, projection, extra, resets_at,
         chart_b64, history, stale=False,
+        display_color=display_color,
     )
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "--set-color":
+        prefs = load_prefs()
+        prefs["display_color"] = sys.argv[2]
+        save_prefs(prefs)
+        sys.exit(0)
     main()
