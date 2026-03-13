@@ -209,7 +209,10 @@ def calculate_projection(
             "resets_at": resets_at,
         }
 
-    burn_rate = current_pct / elapsed_hours  # % per hour
+    # Use at least 24 hours for burn rate calculation to prevent
+    # early-window spikes from producing absurd projections
+    effective_elapsed = max(elapsed_hours, 24.0)
+    burn_rate = current_pct / effective_elapsed  # % per hour
     projected_pct = current_pct + burn_rate * remaining_hours
 
     return {
